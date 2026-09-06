@@ -23,7 +23,6 @@ import kizzy.gateway.entities.presence.Metadata
 import kizzy.gateway.entities.presence.Party
 import kizzy.gateway.entities.presence.Presence
 import kizzy.gateway.entities.presence.Timestamps
-import kotlinx.coroutines.isActive
 
 class KizzyRPC(
     private val token: String,
@@ -49,6 +48,13 @@ class KizzyRPC(
     private var buttons = ArrayList<String>()
     private var buttonUrl = ArrayList<String>()
     private var url: String? = null
+    private var activityId: String? = null
+
+    fun setApplicationId(applicationId: String?): KizzyRPC {
+        if (!applicationId.isNullOrBlank() && applicationId.all { it.isDigit() })
+            this.applicationIdNumber = applicationId
+        return this
+    }
 
     fun closeRPC() {
         discordWebSocket.close()
@@ -268,15 +274,20 @@ class KizzyRPC(
     }
 
     suspend fun build() {
+        activityId = newActivityId()
         presence = Presence(
             activities = listOf(
                 Activity(
                     name = activityName,
+                    id = activityId,
                     state = state?.sanitize(),
                     details = details?.sanitize(),
                     party = party.takeIf { party != null },
                     type = type,
                     platform = platform?.sanitize(),
+                    flags = ACTIVITY_FLAGS,
+                    createdAt = System.currentTimeMillis(),
+                    sessionId = discordWebSocket.currentSessionId(),
                     timestamps = Timestamps(
                         start = startTimestamps,
                         end = stopTimestamps
@@ -289,16 +300,28 @@ class KizzyRPC(
                     ).takeIf { largeImage != null || smallImage != null },
                     buttons = buttons.takeIf { buttons.size > 0 },
                     metadata = Metadata(buttonUrls = buttonUrl).takeIf { buttonUrl.size > 0 },
-                    applicationId = applicationIdNumber.takeIf { it.isNotEmpty() } ?: Constants.APPLICATION_ID,
+                    applicationId = resolveApplicationId(),
                     url = url
                 )
             ),
-            afk = true,
-            since = startTimestamps.takeIf { startTimestamps != null }?: System.currentTimeMillis(),
-            status = status
+            afk = false,
+            since = startTimestamps ?: System.currentTimeMillis(),
+            status = status ?: "online"
         )
         connectToWebSocket()
     }
+
+    private fun resolveApplicationId(): String {
+        return applicationIdNumber.takeIf { it.isNotBlank() } ?: Constants.APPLICATION_ID
+    }
+
+    private fun newActivityId(): String {
+        val chars = "0123456789abcdef"
+        return buildString {
+            repeat(32) { append(chars.random()) }
+        }
+    }
+
     private suspend fun connectToWebSocket() {
         if (!isUserTokenValid())
             logger.e(
@@ -310,39 +333,48 @@ class KizzyRPC(
     }
 
     suspend fun updateRPC(commonRpc: CommonRpc, enableTimestamps: Boolean? = true) {
-        if (!discordWebSocket.isActive) return
+        if (!discordWebSocket.isWebSocketConnected()) return
         var time = Timestamps(start = startTimestamps)
         if (commonRpc.time != null)
             Timestamps(end = commonRpc.time.end, start = commonRpc.time.start).also { time = it }
         if (commonRpc.partyCurrentSize != null && commonRpc.partyMaxSize != null)
             Party(id = "kizzy", size = arrayOf(commonRpc.partyCurrentSize, commonRpc.partyMaxSize)).also { party = it }
+        commonRpc.applicationId?.let { setApplicationId(it) }
+        if (activityId == null) activityId = newActivityId()
         discordWebSocket.sendActivity(
             Presence(
                 activities = listOf(
                     Activity(
                         name = commonRpc.name,
+                        id = activityId,
                         details = commonRpc.details?.takeIf { it.isNotEmpty() }?.sanitize(),
                         state = commonRpc.state?.takeIf { it.isNotEmpty() }?.sanitize(),
                         type = commonRpc.type ?: Prefs[CUSTOM_ACTIVITY_TYPE, 0],
                         platform = commonRpc.platform?.sanitize(),
+                        flags = ACTIVITY_FLAGS,
+                        createdAt = System.currentTimeMillis(),
+                        sessionId = discordWebSocket.currentSessionId(),
                         timestamps = time.takeIf { enableTimestamps == true },
                         assets = Assets(
-                                largeImage = commonRpc.largeImage?.resolveImage(kizzyRepository),
-                                smallImage = commonRpc.smallImage?.resolveImage(kizzyRepository),
-                                largeText = commonRpc.largeText?.sanitize(),
-                                smallText = commonRpc.smallText?.sanitize()
-                            ).takeIf { commonRpc.largeImage != null || commonRpc.smallImage != null },
+                            largeImage = commonRpc.largeImage?.resolveImage(kizzyRepository),
+                            smallImage = commonRpc.smallImage?.resolveImage(kizzyRepository),
+                            largeText = commonRpc.largeText?.sanitize(),
+                            smallText = commonRpc.smallText?.sanitize()
+                        ).takeIf { commonRpc.largeImage != null || commonRpc.smallImage != null },
                         party = party.takeIf { party != null },
                         buttons = buttons.takeIf { buttons.size > 0 },
                         metadata = Metadata(buttonUrls = buttonUrl).takeIf { buttonUrl.size > 0 },
-                        applicationId = applicationIdNumber.takeIf { it.isNotEmpty() } ?: Constants.APPLICATION_ID
-
+                        applicationId = resolveApplicationId()
                     )
                 ),
-                afk = true,
-                since = startTimestamps,
-                status = this.status
+                afk = false,
+                since = startTimestamps ?: System.currentTimeMillis(),
+                status = this.status ?: "online"
             )
         )
+    }
+
+    private companion object {
+        const val ACTIVITY_FLAGS = 1
     }
 }

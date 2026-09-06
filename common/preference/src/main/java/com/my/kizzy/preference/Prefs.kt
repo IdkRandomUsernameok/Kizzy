@@ -128,6 +128,7 @@ object Prefs {
         if (currentTime - lastDeleted > 24.hours.inWholeMilliseconds) {
             remove(SAVED_IMAGES)
             remove(SAVED_ARTWORK)
+            remove(SAVED_LINKS)
             set(LAST_DELETED, currentTime)
         }
     }
@@ -153,6 +154,7 @@ object Prefs {
     const val MEDIA_RPC_HIDE_ON_PAUSE = "hide_on_pause"
     const val MEDIA_RPC_SHOW_PLAYBACK_STATE = "show_playback_state"
     const val MEDIA_RPC_SHOW_SONG_AS_TITLE = "show_song_as_title"
+    const val MEDIA_RPC_YOUTUBE_THUMBNAIL = "media_rpc_youtube_thumbnail"
 
     //Rpc Setting Preferences
     const val USE_RPC_BUTTONS = "use_saved_rpc_buttons"
@@ -165,6 +167,8 @@ object Prefs {
     const val SAVED_IMAGES = "saved_images"
     // Saved ArtWork
     const val SAVED_ARTWORK = "saved_artwork"
+    // Resolved remote image links
+    const val SAVED_LINKS = "saved_links"
 
     //new
     const val DARK_THEME = "dark_theme_value"

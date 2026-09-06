@@ -94,6 +94,7 @@ class CustomRpcService : Service() {
 
                 kizzyRPC.apply {
                     rpcData?.let {
+                        setApplicationId(it.applicationId.ifEmpty { null })
                         setName(it.name.ifEmpty { "" })
                         setDetails(it.details.ifEmpty { null })
                         setState(it.state.ifEmpty { null })

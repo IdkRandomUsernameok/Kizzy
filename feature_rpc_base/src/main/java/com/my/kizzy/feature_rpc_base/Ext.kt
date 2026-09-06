@@ -38,6 +38,7 @@ internal suspend fun Notification.Builder.setLargeIcon(
         is RpcImage.BitmapImage -> rpcImage.bitmap
         is RpcImage.DiscordImage -> "https://cdn.discordapp.com/${rpcImage.image}"
         is RpcImage.ExternalImage -> rpcImage.image
+        is RpcImage.YoutubeThumbnail -> rpcImage.videoUrl
     }
 
     val imageLoader = coil.ImageLoader(context)

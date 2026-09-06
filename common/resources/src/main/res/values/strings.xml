@@ -219,4 +219,6 @@
     <string name="set_imgur_client_id">Set Imgur Client ID</string>
     <string name="set_imgur_client_id_desc">If images aren\'t showing using Imgur, you can try setting your own Client ID</string>
     <string name="show_song_as_title">Show Song as Title</string>
+    <string name="use_youtube_thumbnail">Use YouTube Thumbnails</string>
+    <string name="use_youtube_thumbnail_desc">Show the video thumbnail as the large image when watching YouTube</string>
 </resources>

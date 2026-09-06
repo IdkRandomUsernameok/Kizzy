@@ -13,6 +13,7 @@
 package com.my.kizzy.data.repository
 
 import com.my.kizzy.data.remote.ApiService
+import com.my.kizzy.data.remote.DetectableGameResponse
 import com.my.kizzy.data.remote.GamesResponse
 import com.my.kizzy.data.remote.ImgurApiService
 import com.my.kizzy.data.remote.toGame
@@ -54,8 +55,21 @@ class KizzyRepositoryImpl @Inject constructor(
     }
 
     override suspend fun getGames(): List<Game> {
-        return api.getGames().getOrNull()?.body<List<GamesResponse>>()?.map { it.toGame() }
-            ?: emptyList()
+        val console = runCatching {
+            api.getGames().getOrNull()?.body<List<GamesResponse>>()?.map { it.toGame() }
+        }.getOrNull() ?: emptyList()
+
+        val detectable = runCatching {
+            api.getDetectableGames().getOrNull()?.body<List<DetectableGameResponse>>()
+                ?.mapNotNull { it.toGame() }
+        }.getOrNull() ?: emptyList()
+
+        return (console + detectable)
+            .distinctBy { it.game_title.lowercase() to it.platform }
+            .sortedWith(
+                compareByDescending<Game> { it.release_year ?: 0 }
+                    .thenBy { it.game_title.lowercase() }
+            )
     }
 
     override suspend fun getUser(userid: String): User {

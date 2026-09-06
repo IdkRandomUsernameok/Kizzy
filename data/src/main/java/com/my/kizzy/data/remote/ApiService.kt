@@ -27,6 +27,7 @@ import javax.inject.Inject
 class ApiService @Inject constructor(
     private val client: HttpClient,
     @Base private val baseUrl: String,
+    @Discord private val discordBaseUrl: String,
     @Github private val githubBaseUrl: String,
 ) {
     suspend fun getImage(url: String) = runCatching {
@@ -53,6 +54,12 @@ class ApiService @Inject constructor(
     suspend fun getGames() = runCatching {
         client.get {
             url("$baseUrl/games")
+        }
+    }
+
+    suspend fun getDetectableGames() = runCatching {
+        client.get {
+            url("$discordBaseUrl/applications/detectable")
         }
     }
 

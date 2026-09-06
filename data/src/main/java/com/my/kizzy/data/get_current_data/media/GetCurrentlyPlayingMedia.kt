@@ -29,6 +29,7 @@ import javax.inject.Inject
 
 class GetCurrentPlayingMedia @Inject constructor(
     private val metadataResolver: MetadataResolver,
+    private val youtubeThumbnailResolver: YoutubeThumbnailResolver,
     private val componentName: ComponentName,
     @ApplicationContext private val context: Context
 ) {
@@ -95,14 +96,28 @@ class GetCurrentPlayingMedia @Inject constructor(
                     if (Prefs[Prefs.MEDIA_RPC_APP_ICON, false]) RpcImage.ApplicationIcon(
                         mediaController.packageName, context
                     ) else null
-                if (bitmap != null) {
+
+                val youtubeThumbnail = if (
+                    Prefs[Prefs.MEDIA_RPC_YOUTUBE_THUMBNAIL, true] &&
+                    youtubeThumbnailResolver.isYoutubePackage(mediaController.packageName)
+                ) youtubeThumbnailResolver.resolve(mediaController) else null
+
+                if (youtubeThumbnail != null) {
+                    smallIcon = largeIcon
+                    smallText = appName
+                    largeIcon = RpcImage.YoutubeThumbnail(
+                        videoUrl = youtubeThumbnail,
+                        fallbacks = generateSequence(youtubeThumbnail) {
+                            youtubeThumbnailResolver.fallbackFor(it)
+                        }.drop(1).toList()
+                    )
+                } else if (bitmap != null) {
                     smallIcon = largeIcon
                     smallText = appName
                     largeIcon = RpcImage.BitmapImage(
                         context = context,
                         bitmap = bitmap,
                         packageName = mediaController.packageName,
-                        // <Main artist>|<Album>|<Title>
                         title = "${metadata.let { metadataResolver.getAlbumArtists(it) }}|${metadata.let { metadataResolver.getAlbum(it) }?: "unknown"}|${title}"
                     )
                 }

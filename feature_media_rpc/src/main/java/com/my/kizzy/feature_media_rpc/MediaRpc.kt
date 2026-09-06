@@ -27,6 +27,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Album
 import androidx.compose.material.icons.filled.Apps
 import androidx.compose.material.icons.filled.Audiotrack
+import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.PauseCircle
 import androidx.compose.material.icons.filled.PlayCircle
 import androidx.compose.material.icons.filled.Timer
@@ -93,6 +94,7 @@ fun MediaRPC(
     var hideOnPause by remember { mutableStateOf(Prefs[MEDIA_RPC_HIDE_ON_PAUSE, false]) }
     var isShowPlaybackState by remember { mutableStateOf(Prefs[MEDIA_RPC_SHOW_PLAYBACK_STATE, false]) }
     var showSongAsTitle by remember { mutableStateOf(Prefs[Prefs.MEDIA_RPC_SHOW_SONG_AS_TITLE, false]) }
+    var useYoutubeThumbnail by remember { mutableStateOf(Prefs[Prefs.MEDIA_RPC_YOUTUBE_THUMBNAIL, true]) }
 
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior(
         rememberTopAppBarState(),
@@ -243,6 +245,17 @@ fun MediaRPC(
                     ) {
                         showSongAsTitle = !showSongAsTitle
                         Prefs[MEDIA_RPC_SHOW_SONG_AS_TITLE] = showSongAsTitle
+                    }
+                }
+                item {
+                    PreferenceSwitch(
+                        title = stringResource(id = R.string.use_youtube_thumbnail),
+                        description = stringResource(id = R.string.use_youtube_thumbnail_desc),
+                        icon = Icons.Default.Image,
+                        isChecked = useYoutubeThumbnail,
+                    ) {
+                        useYoutubeThumbnail = !useYoutubeThumbnail
+                        Prefs[Prefs.MEDIA_RPC_YOUTUBE_THUMBNAIL] = useYoutubeThumbnail
                     }
                 }
                 item {
