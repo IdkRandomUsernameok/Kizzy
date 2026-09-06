@@ -27,6 +27,7 @@ import javax.inject.Inject
 
 class GetCurrentPlayingMediaAll @Inject constructor(
     private val metadataResolver: MetadataResolver,
+    private val youtubeThumbnailResolver: YoutubeThumbnailResolver,
     private val componentName: ComponentName,
     @ApplicationContext private val context: Context
 ) {
@@ -74,7 +75,18 @@ class GetCurrentPlayingMediaAll @Inject constructor(
                 )
 
                 var coverArt: RpcImage? = null
-                if (bitmap != null) {
+                val youtubeThumbnail = if (
+                    youtubeThumbnailResolver.isYoutubePackage(mediaController.packageName)
+                ) youtubeThumbnailResolver.resolve(mediaController) else null
+
+                if (youtubeThumbnail != null) {
+                    coverArt = RpcImage.YoutubeThumbnail(
+                        videoUrl = youtubeThumbnail,
+                        fallbacks = generateSequence(youtubeThumbnail) {
+                            youtubeThumbnailResolver.fallbackFor(it)
+                        }.drop(1).toList()
+                    )
+                } else if (bitmap != null) {
                     coverArt = RpcImage.BitmapImage(
                         context = context,
                         bitmap = bitmap,

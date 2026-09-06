@@ -26,6 +26,21 @@ import kotlinx.serialization.json.Json
 sealed class RpcImage {
     abstract suspend fun resolveImage(repository: KizzyRepository): String?
 
+    protected fun cachedLink(key: String): String? {
+        val cache: HashMap<String, String> = runCatching {
+            Json.decodeFromString<HashMap<String, String>>(Prefs[Prefs.SAVED_LINKS, "{}"])
+        }.getOrElse { hashMapOf() }
+        return cache[key]
+    }
+
+    protected fun cacheLink(key: String, value: String) {
+        val cache: HashMap<String, String> = runCatching {
+            Json.decodeFromString<HashMap<String, String>>(Prefs[Prefs.SAVED_LINKS, "{}"])
+        }.getOrElse { hashMapOf() }
+        cache[key] = value
+        Prefs[Prefs.SAVED_LINKS] = Json.encodeToString(cache)
+    }
+
     class DiscordImage(val image: String) : RpcImage() {
         override suspend fun resolveImage(repository: KizzyRepository): String {
             return "mp:${image}"
@@ -34,7 +49,28 @@ sealed class RpcImage {
 
     class ExternalImage(val image: String) : RpcImage() {
         override suspend fun resolveImage(repository: KizzyRepository): String? {
-            return repository.getImage(image)
+            cachedLink(image)?.let { return it }
+            return repository.getImage(image)?.also { cacheLink(image, it) }
+        }
+    }
+
+    class YoutubeThumbnail(
+        val videoUrl: String,
+        private val fallbacks: List<String> = emptyList(),
+    ) : RpcImage() {
+        override suspend fun resolveImage(repository: KizzyRepository): String? {
+            val candidates = listOf(videoUrl) + fallbacks
+            candidates.forEach { candidate ->
+                cachedLink(candidate)?.let { return it }
+            }
+            candidates.forEach { candidate ->
+                val resolved = repository.getImage(candidate)
+                if (!resolved.isNullOrBlank()) {
+                    cacheLink(candidate, resolved)
+                    return resolved
+                }
+            }
+            return null
         }
     }
 

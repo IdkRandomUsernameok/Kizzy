@@ -42,6 +42,7 @@ class KizzyRepositoryTest {
         apiService = ApiService(
             client = client,
             baseUrl = BuildConfig.BASE_URL,
+            discordBaseUrl = BuildConfig.DISCORD_API_BASE_URL,
             githubBaseUrl = BuildConfig.GITHUB_API_BASE_URL
         )
         imgurService = ImgurApiService(

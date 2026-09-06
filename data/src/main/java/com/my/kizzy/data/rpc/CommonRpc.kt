@@ -25,5 +25,6 @@ data class CommonRpc(
     var smallText: String? = null,
     val time: Timestamps? = null,
     val packageName: String = "",
-    val platform: String? = null
+    val platform: String? = null,
+    val applicationId: String? = null
 )

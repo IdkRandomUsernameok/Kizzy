@@ -176,9 +176,12 @@ fun GamesScreen(
                             isConsoleRpcRunning = !isConsoleRpcRunning
                             when (isConsoleRpcRunning) {
                                 true -> {
-                                    if (intent.hasExtra("RPC")) {
-                                        Prefs[Prefs.LAST_RUN_CONSOLE_RPC] =
-                                            intent.getStringExtra("RPC")
+                                    val config = intent.getStringExtra("RPC")
+                                        ?: Prefs[Prefs.LAST_RUN_CONSOLE_RPC, ""].takeIf { it.isNotEmpty() }
+                                    if (config != null) {
+                                        intent.removeExtra("RPC")
+                                        intent.putExtra("RPC", config)
+                                        Prefs[Prefs.LAST_RUN_CONSOLE_RPC] = config
                                         context.stopService(
                                             Intent(
                                                 context,
@@ -198,6 +201,8 @@ fun GamesScreen(
                                             )
                                         )
                                         context.startService(intent)
+                                    } else {
+                                        isConsoleRpcRunning = false
                                     }
                                 }
 
@@ -210,7 +215,10 @@ fun GamesScreen(
                             }
                         }
                         LazyColumn {
-                            items(state.games) { game ->
+                            items(
+                                items = state.games,
+                                key = { "${it.application_id ?: it.game_title}:${it.platform}" }
+                            ) { game ->
                                 SingleChoiceGameItem(
                                     game = game,
                                     selected = game.game_title == selected
@@ -218,18 +226,28 @@ fun GamesScreen(
                                     selected = game.game_title
                                     val string = Json.encodeToString(
                                         RpcConfig(
-                                            name = info.platform,
-                                            details = info.game_title,
+                                            name = info.game_title,
+                                            details = info.platform,
                                             timestampsStart = System.currentTimeMillis().toString(),
-                                            status = "dnd",
+                                            status = Prefs[Prefs.CUSTOM_ACTIVITY_STATUS, "online"],
                                             largeImg = info.large_image ?: "",
                                             smallImg = info.small_image,
+                                            largeText = info.game_title,
+                                            smallText = info.platform,
                                             type = "0",
+                                            applicationId = info.application_id ?: "",
                                         )
                                     )
                                     intent.apply {
                                         removeExtra("RPC")
                                         putExtra("RPC", string)
+                                    }
+                                    Prefs[Prefs.LAST_RUN_CONSOLE_RPC] = string
+                                    if (isConsoleRpcRunning) {
+                                        context.stopService(
+                                            Intent(context, CustomRpcService::class.java)
+                                        )
+                                        context.startService(intent)
                                     }
                                 }
                             }
@@ -303,6 +321,14 @@ fun SingleChoiceGameItem(
                     style = MaterialTheme.typography.titleLarge.copy(fontSize = 20.sp),
                     color = if (selected) MaterialTheme.colorScheme.onPrimaryContainer
                     else MaterialTheme.colorScheme.onSurfaceVariant,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Text(
+                    text = listOfNotNull(game.platform, game.release_year?.toString())
+                        .joinToString(" · "),
+                    maxLines = 1,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                     overflow = TextOverflow.Ellipsis
                 )
             }

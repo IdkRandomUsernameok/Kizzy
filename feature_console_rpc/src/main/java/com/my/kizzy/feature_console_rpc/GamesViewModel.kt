@@ -52,8 +52,9 @@ class GamesViewModel @Inject constructor(
         getGamesUseCase().onEach { result ->
             when (result) {
                 is Resource.Success -> {
-                    _state.value = GamesState.Success(games = result.data ?: emptyList())
+                    games.clear()
                     games.addAll(result.data ?: emptyList())
+                    _state.value = GamesState.Success(games = games.toList())
                 }
 
                 is Resource.Error -> {
@@ -81,18 +82,22 @@ class GamesViewModel @Inject constructor(
     private fun onSearch(query: String) {
         searchJob?.cancel()
         searchJob = viewModelScope.launch {
-            delay(500)
+            delay(250)
             searchForGame(query)
         }
     }
 
-    private fun searchForGame(query: String) = if (query == "")
-        _state.value = GamesState.Success(games = games)
-    else {
-        val newList = games.filter {
-            it.game_title.contains(query, ignoreCase = true)
+    private fun searchForGame(query: String) {
+        val trimmed = query.trim()
+        if (trimmed.isEmpty()) {
+            _state.value = GamesState.Success(games = games.toList())
+            return
         }
-        _state.value = GamesState.Success(games = newList)
+        val matches = games.filter {
+            it.game_title.contains(trimmed, ignoreCase = true) ||
+                it.platform.contains(trimmed, ignoreCase = true)
+        }.sortedByDescending { it.game_title.startsWith(trimmed, ignoreCase = true) }
+        _state.value = GamesState.Success(games = matches)
     }
 }
 
