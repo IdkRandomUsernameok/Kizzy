@@ -18,10 +18,28 @@ android {
             useSupportLibrary = true
         }
     }
+    val keystorePath = System.getenv("KIZZY_KEYSTORE_FILE")
+
+    signingConfigs {
+        if (!keystorePath.isNullOrBlank()) {
+            create("release") {
+                storeFile = file(keystorePath)
+                storePassword = System.getenv("KIZZY_KEYSTORE_PASSWORD")
+                keyAlias = System.getenv("KIZZY_KEY_ALIAS")
+                keyPassword = System.getenv("KIZZY_KEY_PASSWORD")
+            }
+        }
+    }
+
     buildTypes {
         release {
             isShrinkResources = true
             isMinifyEnabled = true
+            signingConfig = if (!keystorePath.isNullOrBlank()) {
+                signingConfigs.getByName("release")
+            } else {
+                signingConfigs.getByName("debug")
+            }
         }
     }
 
