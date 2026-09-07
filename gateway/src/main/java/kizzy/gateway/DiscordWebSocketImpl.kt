@@ -3,6 +3,7 @@ package kizzy.gateway
 import com.my.kizzy.domain.interfaces.Logger
 import com.my.kizzy.domain.interfaces.NoOpLogger
 import io.ktor.client.*
+import io.ktor.client.engine.cio.CIO
 import io.ktor.client.plugins.websocket.*
 import io.ktor.websocket.*
 import kizzy.gateway.entities.Heartbeat
@@ -46,8 +47,17 @@ open class DiscordWebSocketImpl(
     private var reconnectAttempts = 0
     private var lastPresence: Presence? = null
     private val sendLock = Mutex()
-    private val client: HttpClient = HttpClient {
+    private val client: HttpClient = HttpClient(CIO) {
         install(WebSockets)
+        // CIO's default requestTimeout is 15s and is applied to the whole request —
+        // including a WebSocket session. A large account's READY payload (guild list,
+        // presences, …) can take longer than that to fully arrive on a mobile
+        // connection, and the engine then kills the connection with an abrupt 1006
+        // right as it is waiting on READY — on every fresh IDENTIFY. The session never
+        // becomes usable, so no presence is ever sent: the RPC looks "connected" from
+        // the app's side but never shows up on Discord. A long-lived gateway session
+        // has no natural request boundary to time out against, so disable the timeout.
+        engine { requestTimeout = 0 }
     }
     private val json = Json {
         ignoreUnknownKeys = true
@@ -72,7 +82,6 @@ open class DiscordWebSocketImpl(
                 logger.i("Gateway", "Opening connection to $url")
                 client.webSocket(url) {
                     websocket = this
-                    reconnectAttempts = 0
                     incoming.receiveAsFlow().collect { frame ->
                         if (frame is Frame.Text) onMessage(frame.readText())
                     }
@@ -104,6 +113,16 @@ open class DiscordWebSocketImpl(
             logger.e("Gateway", "Gateway rejected this token, giving up")
             explicitlyClosed = true
             return
+        }
+        // After a few failed attempts in a row, a stale session can never be resumed —
+        // fall back to a fresh IDENTIFY instead of looping on RESUME forever.
+        if (reconnectAttempts + 1 >= MAX_RECONNECT_ATTEMPTS_BEFORE_FRESH_IDENTIFY &&
+            (sessionId != null || resumeGatewayUrl != null)
+        ) {
+            logger.e("Gateway", "$reconnectAttempts failed reconnects, dropping session state for a fresh IDENTIFY")
+            sessionId = null
+            sequence = 0
+            resumeGatewayUrl = null
         }
         val delayMillis = backoffDelay()
         logger.i("Gateway", "Reconnecting in ${delayMillis}ms")
@@ -141,12 +160,18 @@ open class DiscordWebSocketImpl(
                 logger.i("Gateway", "resume_gateway_url updated to $resumeGatewayUrl")
                 logger.i("Gateway", "session_id updated to $sessionId")
                 connected = true
+                // Only a confirmed session counts as a successful connection — resetting
+                // here (not when the socket merely opens) lets handleDisconnect's
+                // "3 failed attempts -> fresh IDENTIFY" logic actually trigger when a
+                // session keeps failing after the handshake.
+                reconnectAttempts = 0
                 replayPresence()
             }
 
             "RESUMED" -> {
                 logger.i("Gateway", "Session Resumed")
                 connected = true
+                reconnectAttempts = 0
                 replayPresence()
             }
 
@@ -309,6 +334,7 @@ open class DiscordWebSocketImpl(
         val NON_RESUMABLE_CODES = setOf(4003, 4004, 4007, 4009, 4010, 4011, 4012, 4013, 4014)
         val FATAL_CODES = setOf(4004, 4010, 4011, 4012, 4013, 4014)
         const val MAX_BACKOFF_MILLIS = 60_000L
+        const val MAX_RECONNECT_ATTEMPTS_BEFORE_FRESH_IDENTIFY = 3
         val CONNECT_TIMEOUT = 30.seconds
     }
 }

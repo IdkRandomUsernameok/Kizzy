@@ -3,12 +3,22 @@ package kizzy.gateway.entities.presence
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
+/**
+ * The activity payload sent inside a Status Update (op 3) for a user account.
+ *
+ * This deliberately mirrors only the fields the official client actually honors for
+ * user-account presence updates: name, state, details, type, timestamps, assets,
+ * party, buttons + metadata, application_id and url.
+ *
+ * Extra "session-based" fields the gateway dispatches to clients (id, session_id,
+ * sync_id, created_at, flags, supported_platforms) must NOT be echoed back inside an
+ * outgoing activity — including them makes the update not render, so the presence
+ * is silently dropped. Keep this payload minimal.
+ */
 @Serializable
 data class Activity(
     @SerialName("name")
     val name: String?,
-    @SerialName("id")
-    val id: String? = null,
     @SerialName("state")
     val state: String? = null,
     @SerialName("details")
@@ -30,15 +40,5 @@ data class Activity(
     @SerialName("application_id")
     val applicationId: String? = null,
     @SerialName("url")
-    val url: String? = null,
-    @SerialName("flags")
-    val flags: Int? = null,
-    @SerialName("session_id")
-    val sessionId: String? = null,
-    @SerialName("created_at")
-    val createdAt: Long? = null,
-    @SerialName("sync_id")
-    val syncId: String? = null,
-    @SerialName("supported_platforms")
-    val supportedPlatforms: List<String>? = null
+    val url: String? = null
 )
