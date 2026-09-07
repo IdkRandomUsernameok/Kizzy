@@ -48,7 +48,6 @@ class KizzyRPC(
     private var buttons = ArrayList<String>()
     private var buttonUrl = ArrayList<String>()
     private var url: String? = null
-    private var activityId: String? = null
 
     fun setApplicationId(applicationId: String?): KizzyRPC {
         if (!applicationId.isNullOrBlank() && applicationId.all { it.isDigit() })
@@ -274,20 +273,15 @@ class KizzyRPC(
     }
 
     suspend fun build() {
-        activityId = newActivityId()
         presence = Presence(
             activities = listOf(
                 Activity(
                     name = activityName,
-                    id = activityId,
                     state = state?.sanitize(),
                     details = details?.sanitize(),
                     party = party.takeIf { party != null },
                     type = type,
                     platform = platform?.sanitize(),
-                    flags = ACTIVITY_FLAGS,
-                    createdAt = System.currentTimeMillis(),
-                    sessionId = discordWebSocket.currentSessionId(),
                     timestamps = Timestamps(
                         start = startTimestamps,
                         end = stopTimestamps
@@ -300,7 +294,7 @@ class KizzyRPC(
                     ).takeIf { largeImage != null || smallImage != null },
                     buttons = buttons.takeIf { buttons.size > 0 },
                     metadata = Metadata(buttonUrls = buttonUrl).takeIf { buttonUrl.size > 0 },
-                    applicationId = resolveApplicationId(),
+                    applicationId = applicationIdFor(type),
                     url = url
                 )
             ),
@@ -311,15 +305,16 @@ class KizzyRPC(
         connectToWebSocket()
     }
 
-    private fun resolveApplicationId(): String {
+    /**
+     * Discord renders an activity that carries an `application_id` as a
+     * "Playing {app}" card. For Listening/Watching/Competing (any type other than
+     * Playing) a set `application_id` makes the client drop the whole activity —
+     * so it shows up nowhere even though the presence was sent. Only attach the id
+     * for the Playing type; other types render from `name`/`type` alone.
+     */
+    private fun applicationIdFor(activityType: Int): String? {
+        if (activityType != 0) return null
         return applicationIdNumber.takeIf { it.isNotBlank() } ?: Constants.APPLICATION_ID
-    }
-
-    private fun newActivityId(): String {
-        val chars = "0123456789abcdef"
-        return buildString {
-            repeat(32) { append(chars.random()) }
-        }
     }
 
     private suspend fun connectToWebSocket() {
@@ -340,20 +335,15 @@ class KizzyRPC(
         if (commonRpc.partyCurrentSize != null && commonRpc.partyMaxSize != null)
             Party(id = "kizzy", size = arrayOf(commonRpc.partyCurrentSize, commonRpc.partyMaxSize)).also { party = it }
         commonRpc.applicationId?.let { setApplicationId(it) }
-        if (activityId == null) activityId = newActivityId()
         discordWebSocket.sendActivity(
             Presence(
                 activities = listOf(
                     Activity(
                         name = commonRpc.name,
-                        id = activityId,
                         details = commonRpc.details?.takeIf { it.isNotEmpty() }?.sanitize(),
                         state = commonRpc.state?.takeIf { it.isNotEmpty() }?.sanitize(),
                         type = commonRpc.type ?: Prefs[CUSTOM_ACTIVITY_TYPE, 0],
                         platform = commonRpc.platform?.sanitize(),
-                        flags = ACTIVITY_FLAGS,
-                        createdAt = System.currentTimeMillis(),
-                        sessionId = discordWebSocket.currentSessionId(),
                         timestamps = time.takeIf { enableTimestamps == true },
                         assets = Assets(
                             largeImage = commonRpc.largeImage?.resolveImage(kizzyRepository),
@@ -364,7 +354,7 @@ class KizzyRPC(
                         party = party.takeIf { party != null },
                         buttons = buttons.takeIf { buttons.size > 0 },
                         metadata = Metadata(buttonUrls = buttonUrl).takeIf { buttonUrl.size > 0 },
-                        applicationId = resolveApplicationId()
+                        applicationId = applicationIdFor(commonRpc.type ?: Prefs[CUSTOM_ACTIVITY_TYPE, 0])
                     )
                 ),
                 afk = false,
@@ -372,9 +362,5 @@ class KizzyRPC(
                 status = this.status ?: "online"
             )
         )
-    }
-
-    private companion object {
-        const val ACTIVITY_FLAGS = 1
     }
 }
