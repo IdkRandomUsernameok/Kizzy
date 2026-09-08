@@ -23,6 +23,10 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import kotlin.coroutines.CoroutineContext
 import kotlin.math.min
 import kotlin.random.Random
@@ -31,12 +35,17 @@ import kotlin.time.Duration.Companion.seconds
 
 open class DiscordWebSocketImpl(
     private val token: String,
-    private val logger: Logger = NoOpLogger
+    private val logger: Logger = NoOpLogger,
+    // Invoked when Discord rejects the token (gateway close 4004), so the host can
+    // clear the stored token and surface a re-login prompt instead of the service
+    // silently "running" while Discord ignores every presence update.
+    private val onAuthenticationFailed: () -> Unit = {},
 ) : DiscordWebSocket {
     private val gatewayUrl = "wss://gateway.discord.gg/?v=10&encoding=json"
     private var websocket: DefaultClientWebSocketSession? = null
     private var sequence = 0
     private var sessionId: String? = null
+    private var selfUserId: String? = null
     private var heartbeatInterval = 0L
     private var resumeGatewayUrl: String? = null
     private var heartbeatJob: Job? = null
@@ -110,7 +119,11 @@ open class DiscordWebSocketImpl(
             resumeGatewayUrl = null
         }
         if (code != null && code in FATAL_CODES) {
-            logger.e("Gateway", "Gateway rejected this token, giving up")
+            logger.e("Gateway", "Gateway rejected this connection with fatal code $code, giving up")
+            if (code == 4004) {
+                logger.e("Gateway", "Discord rejected the login token - please log in again")
+                runCatching { onAuthenticationFailed() }
+            }
             explicitlyClosed = true
             return
         }
@@ -156,9 +169,18 @@ open class DiscordWebSocketImpl(
             "READY" -> {
                 val ready = decodePayloadData<Ready>(jsonString) ?: return
                 sessionId = ready.sessionId
+                selfUserId = ready.user?.id
                 resumeGatewayUrl = ready.resumeGatewayUrl?.let { "$it/?v=10&encoding=json" }
                 logger.i("Gateway", "resume_gateway_url updated to $resumeGatewayUrl")
                 logger.i("Gateway", "session_id updated to $sessionId")
+                ready.sessions?.let { sessions ->
+                    logger.i(
+                        "Gateway",
+                        "Account sessions per Discord: " + sessions.joinToString("; ") { s ->
+                            "status=${s.status}, active=${s.active}, client=${s.clientInfo?.client}"
+                        }
+                    )
+                }
                 connected = true
                 // Only a confirmed session counts as a successful connection — resetting
                 // here (not when the socket merely opens) lets handleDisconnect's
@@ -166,6 +188,23 @@ open class DiscordWebSocketImpl(
                 // session keeps failing after the handshake.
                 reconnectAttempts = 0
                 replayPresence()
+            }
+
+            "PRESENCE_UPDATE" -> {
+                // Discord echoes the account's own presence back when an update
+                // registers; logging it makes acceptance vs silent-drop visible
+                // in the in-app Logs screen.
+                runCatching {
+                    val d = json.parseToJsonElement(jsonString)
+                        .jsonObject["d"]?.jsonObject ?: return@runCatching
+                    val userId = d["user"]?.jsonObject?.get("id")?.jsonPrimitive?.contentOrNull
+                    if (userId != null && userId == selfUserId) {
+                        val status = d["status"]?.jsonPrimitive?.contentOrNull
+                        val activities = d["activities"]?.jsonArray
+                            ?.mapNotNull { it.jsonObject["name"]?.jsonPrimitive?.contentOrNull }
+                        logger.i("Gateway", "Discord confirmed our presence: status=$status, activities=$activities")
+                    }
+                }
             }
 
             "RESUMED" -> {
@@ -230,10 +269,13 @@ open class DiscordWebSocketImpl(
     }
 
     private suspend fun sendIdentify() {
-        logger.i("Gateway", "Sending $IDENTIFY")
+        logger.i("Gateway", "Sending $IDENTIFY (presence included: ${lastPresence != null})")
+        // The official client carries its current presence in IDENTIFY; for user
+        // accounts this is the payload that is reliably respected, unlike a bare
+        // op-3 Status Update sent after READY.
         send(
             op = IDENTIFY,
-            d = token.toIdentifyPayload()
+            d = token.toIdentifyPayload(presence = lastPresence)
         )
     }
 
@@ -323,7 +365,7 @@ open class DiscordWebSocketImpl(
     }
 
     private suspend fun dispatchPresence(presence: Presence) {
-        logger.i("Gateway", "Sending $PRESENCE_UPDATE")
+        logger.i("Gateway", "Sending $PRESENCE_UPDATE: ${json.encodeToString(presence)}")
         send(
             op = PRESENCE_UPDATE,
             d = presence

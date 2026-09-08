@@ -298,8 +298,8 @@ class KizzyRPC(
                     url = url
                 )
             ),
-            afk = false,
-            since = startTimestamps ?: System.currentTimeMillis(),
+            afk = true,
+            since = startTimestamps,
             status = status ?: "online"
         )
         connectToWebSocket()
@@ -357,8 +357,8 @@ class KizzyRPC(
                         applicationId = applicationIdFor(commonRpc.type ?: Prefs[CUSTOM_ACTIVITY_TYPE, 0])
                     )
                 ),
-                afk = false,
-                since = startTimestamps ?: System.currentTimeMillis(),
+                afk = true,
+                since = startTimestamps,
                 status = this.status ?: "online"
             )
         )
